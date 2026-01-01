@@ -1,6 +1,4 @@
 // travel-tour-app-reviews/server.js
-
-// travel-tour-app-reviews/server.js
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -9,6 +7,7 @@ const socketIo = require('socket.io');
 const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
+const path = require('path'); // ADD THIS LINE
 require('dotenv').config();
 
 const app = express();
@@ -66,12 +65,12 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
-const appReviewRoutes = require('./routes/appReviewRoutes');
+// API Routes - FIXED PATH
+const appReviewRoutes = require('./src/routes/appReviewRoutes');
 app.use('/api', appReviewRoutes);
 
-// Socket.io connection handling
-require('./sockets/notifications')(io);
+// Socket.io connection handling - FIXED PATH
+require('./src/sockets/notifications')(io);
 
 // Database connection with retry
 const connectDB = async () => {
