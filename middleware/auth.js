@@ -1,21 +1,21 @@
-// travel-tour-app-reviews/middleware/auth.js
-
-// travel-tour-app-reviews/src/middleware/auth.js
 const jwt = require('jsonwebtoken');
 const path = require('path');
 
 // Try to load User model, but provide fallback if it fails
 let User;
 try {
+  // Adjusted path to look for models in the correct directory structure
   const userModelPath = path.join(__dirname, '..', 'models', 'User.js');
-  console.log(`🔍 Loading User model from: ${userModelPath}`);
   User = require(userModelPath);
 } catch (error) {
   console.warn('⚠️ User model not found. Using JWT-only authentication.');
   User = null;
 }
 
-// Main authentication middleware
+/**
+ * Main authentication middleware
+ * Verifies the JWT token and attaches the user to the request object
+ */
 const auth = async (req, res, next) => {
     try {
         // Get token from header
@@ -28,13 +28,13 @@ const auth = async (req, res, next) => {
             });
         }
 
-        // Verify token with fallback secret
+        // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'app-reviews-fallback-secret-2024');
         
-        // If User model is available, try to find user
+        // If User model is available, try to find user in DB to check status
         if (User) {
             try {
-                const user = await User.findById(decoded.id).select('-password');
+                const user = await User.findById(decoded.id || decoded.userId).select('-password');
                 
                 if (!user) {
                     return res.status(401).json({
@@ -43,42 +43,42 @@ const auth = async (req, res, next) => {
                     });
                 }
 
-                if (!user.isActive) {
+                // FIX: Only block if isActive is EXPLICITLY set to false.
+                // This prevents new/existing accounts without this field from being locked out.
+                if (user.isActive === false) {
                     return res.status(403).json({
                         success: false,
                         message: 'Account is deactivated'
                     });
                 }
 
-                // Attach full user object
+                // Attach full user object from DB
                 req.user = user;
                 req.token = token;
                 
             } catch (dbError) {
-                console.warn('⚠️ Database error in auth, using JWT only:', dbError.message);
-                // Fallback to JWT-only authentication
+                console.warn('⚠️ Database error in auth, falling back to token data:', dbError.message);
+                // Fallback: use data encoded in the JWT if DB is unreachable
                 req.user = {
+                    _id: decoded.id || decoded.userId,
                     id: decoded.id || decoded.userId,
-                    userId: decoded.id || decoded.userId,
-                    email: decoded.email || 'unknown@example.com',
-                    name: decoded.name || 'User',
-                    role: decoded.role || 'student'
+                    email: decoded.email,
+                    role: decoded.role || 'user'
                 };
                 req.token = token;
             }
         } else {
-            // JWT-only authentication (no database)
+            // JWT-only authentication (No User model found)
             req.user = {
+                _id: decoded.id || decoded.userId,
                 id: decoded.id || decoded.userId,
-                userId: decoded.id || decoded.userId,
-                email: decoded.email || 'unknown@example.com',
-                name: decoded.name || 'User',
-                role: decoded.role || 'student'
+                email: decoded.email,
+                role: decoded.role || 'user'
             };
             req.token = token;
         }
         
-        console.log(`🔐 Authenticated user: ${req.user.email} (${req.user.role})`);
+        console.log(`🔐 Authenticated: ${req.user.email} | Role: ${req.user.role}`);
         next();
 
     } catch (error) {
@@ -105,30 +105,24 @@ const auth = async (req, res, next) => {
     }
 };
 
-// Admin authorization middleware
+/**
+ * Admin authorization middleware
+ * Ensures the authenticated user has the 'admin' role
+ */
 const adminAuth = async (req, res, next) => {
-    try {
-        // First authenticate
-        await auth(req, res, () => {
-            // Check if user is admin
-            if (req.user && req.user.role === 'admin') {
-                console.log(`👑 Admin access granted: ${req.user.email}`);
-                next();
-            } else {
-                console.log(`🚫 Admin access denied for: ${req.user?.email || 'unknown'}`);
-                res.status(403).json({
-                    success: false,
-                    message: 'Administrator access required'
-                });
-            }
-        });
-    } catch (error) {
-        console.error('Admin auth error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Authorization system error'
-        });
-    }
+    // Call the auth middleware first
+    auth(req, res, () => {
+        if (req.user && req.user.role === 'admin') {
+            console.log(`👑 Admin access granted: ${req.user.email}`);
+            next();
+        } else {
+            console.log(`🚫 Admin access denied: ${req.user?.email || 'unknown'}`);
+            res.status(403).json({
+                success: false,
+                message: 'Administrator access required'
+            });
+        }
+    });
 };
 
 // Rate limiting middleware
@@ -136,22 +130,19 @@ const rateLimit = require('express-rate-limit');
 
 const reviewLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10, // Limit each IP to 10 review submissions per windowMs
+    max: 10,
     message: {
         success: false,
         message: 'Too many review submissions. Please try again later.'
     },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => {
-        // Skip rate limiting for admin users
-        return req.user && req.user.role === 'admin';
-    }
+    skip: (req) => req.user && req.user.role === 'admin'
 });
 
 const shareLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 30, // Limit each IP to 30 shares per hour
+    max: 30,
     message: {
         success: false,
         message: 'Too many share attempts. Please try again later.'
@@ -160,7 +151,6 @@ const shareLimiter = rateLimit({
     legacyHeaders: false
 });
 
-// Export middleware
 module.exports = { 
     auth, 
     adminAuth, 
