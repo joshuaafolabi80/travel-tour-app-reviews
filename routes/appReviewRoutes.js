@@ -1,11 +1,10 @@
 // travel-tour-app-reviews/routes/appReviewRoutes.js
-
-// travel-tour-app-reviews/src/routes/appReviewRoutes.js
 const express = require('express');
 const router = express.Router();
 const path = require('path');
 
-// Use absolute paths with __dirname
+// Use absolute paths with __dirname. 
+// Since this file is in /routes, '..' goes to the root where /middleware and /controllers live.
 const middlewarePath = path.join(__dirname, '..', 'middleware', 'auth.js');
 const controllerPath = path.join(__dirname, '..', 'controllers', 'appReviewController.js');
 
@@ -35,11 +34,11 @@ try {
   
   console.log('✅ Routes dependencies loaded successfully');
 
-  // Public routes (no auth required)
+  // Public routes
   router.get('/reviews/public', getPublicReviews);
   router.get('/stats', getStatistics);
 
-  // User routes (authenticated)
+  // User routes
   router.post('/reviews/submit', auth, reviewLimiter, submitReview);
   router.post('/reviews/:id/helpful', auth, markHelpful);
   router.post('/analytics/share', auth, shareLimiter, trackShare);
@@ -54,35 +53,18 @@ try {
     res.json({
       success: true,
       message: 'Routes are working',
-      timestamp: new Date().toISOString(),
-      paths: {
-        middleware: middlewarePath,
-        controller: controllerPath
-      }
+      timestamp: new Date().toISOString()
     });
   });
 
 } catch (error) {
   console.error('❌ Failed to load routes dependencies:', error);
   
-  // Fallback routes for debugging
   router.get('/reviews/public', (req, res) => {
     res.status(500).json({
       success: false,
-      message: 'Routes failed to load. Check server logs.',
+      message: 'Routes failed to load properly.',
       error: error.message
-    });
-  });
-  
-  router.get('/stats', (req, res) => {
-    res.json({
-      success: true,
-      statistics: {
-        totalReviews: 0,
-        pendingReviews: 0,
-        averageRating: 0,
-        message: 'Fallback mode - routes not loaded'
-      }
     });
   });
 }

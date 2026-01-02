@@ -7,7 +7,7 @@ const socketIo = require('socket.io');
 const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
-const path = require('path'); // ADD THIS LINE
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -20,11 +20,15 @@ const io = socketIo(server, {
       "http://localhost:5173",
       "http://localhost:5174",
       "https://the-conclave-academy.netlify.app",
-      "https://travel-tour-academy-backend.onrender.com"
+      "https://travel-tour-academy-backend.onrender.com",
+      "https://travel-tour-app-reviews.onrender.com"
     ],
     credentials: true
   }
 });
+
+// Store io instance in app for access in routes
+app.set('io', io);
 
 // Middleware
 app.use(helmet());
@@ -35,7 +39,8 @@ app.use(cors({
     "http://localhost:5173",
     "http://localhost:5174",
     "https://the-conclave-academy.netlify.app",
-    "https://travel-tour-academy-backend.onrender.com"
+    "https://travel-tour-academy-backend.onrender.com",
+    "https://travel-tour-app-reviews.onrender.com"
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -65,24 +70,48 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes - FIXED PATH
-const appReviewRoutes = require('./src/routes/appReviewRoutes');
-app.use('/api', appReviewRoutes);
+// API Routes - Corrected path (Removed 'src')
+try {
+  const appReviewRoutes = require(path.join(__dirname, 'routes', 'appReviewRoutes'));
+  app.use('/api', appReviewRoutes);
+  console.log('✅ Routes loaded successfully');
+} catch (error) {
+  console.error('❌ Failed to load routes:', error);
+  app.use('/api', (req, res) => {
+    res.status(500).json({
+      success: false,
+      message: 'Routes failed to load. Check server logs.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  });
+}
 
-// Socket.io connection handling - FIXED PATH
-require('./src/sockets/notifications')(io);
+// Socket.io connection handling - Corrected path (Removed 'src')
+try {
+  require(path.join(__dirname, 'sockets', 'notifications'))(io);
+  console.log('✅ Socket.io initialized');
+} catch (error) {
+  console.error('❌ Failed to load sockets:', error);
+}
 
 // Database connection with retry
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI, {
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/app-reviews', {
       useNewUrlParser: true,
       useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10
     });
     console.log('✅ MongoDB connected for App Reviews service');
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    setTimeout(connectDB, 5000); // Retry after 5 seconds
+    console.error('❌ MongoDB connection error:', error.message);
+    if (process.env.NODE_ENV === 'production') {
+      console.log('⚠️ Running without database connection');
+    } else {
+      setTimeout(connectDB, 5000);
+    }
   }
 };
 
@@ -105,24 +134,9 @@ app.use('*', (req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 5002;
+const PORT = process.env.PORT || 10000;
 
-// Start server
 server.listen(PORT, async () => {
   console.log(`🚀 App Reviews Service running on port ${PORT}`);
-  console.log(`📍 Health check: http://localhost:${PORT}/health`);
-  
-  // Connect to database
   await connectDB();
-  
-  console.log('\n🎯 Available Endpoints:');
-  console.log(`📍 POST   /api/reviews/submit          - Submit a review`);
-  console.log(`📍 GET    /api/reviews/public          - Get public reviews`);
-  console.log(`📍 GET    /api/reviews/pending         - Get pending reviews (Admin)`);
-  console.log(`📍 PUT    /api/reviews/:id/status      - Update review status (Admin)`);
-  console.log(`📍 POST   /api/reviews/:id/helpful     - Mark review as helpful`);
-  console.log(`📍 POST   /api/analytics/share         - Track share analytics`);
-  console.log(`📍 GET    /api/analytics/shares        - Get share analytics (Admin)`);
-  console.log(`📍 GET    /api/stats                   - Get review statistics`);
-  console.log(`📍 WS     /socket.io                  - Real-time notifications`);
 });
